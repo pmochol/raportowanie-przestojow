@@ -417,14 +417,21 @@
     showStatus(error?.message || 'Wystąpił nieoczekiwany błąd.', 'error');
   }
 
-  $('connectBtn').addEventListener('click', async () => {
-    const btn = $('connectBtn'); setBusy(btn, true, 'Łączenie…');
+  ```js
+$('connectBtn').addEventListener('click', async () => {
+    const btn = $('connectBtn');
+    setBusy(btn, true, 'Łączenie…');
+
     try {
-      await connect($('supabaseUrl').value.trim(), $('supabaseKey').value.trim());
+      await connect($('Url').value.trim(), $('Key').value.trim());
       showStatus('Połączono z Supabase.', 'ok');
-    } catch (e) { handleError(e); }
-    finally { setBusy(btn, false); }
-  });
+    } catch (e) {
+      handleError(e);
+    } finally {
+      setBusy(btn, false);
+    }
+});
+```
 
   $('loginForm').addEventListener('submit', async (event) => {
     event.preventDefault(); clearStatus();
@@ -496,11 +503,13 @@
   // Wczytaj konfigurację zapisaną na tym urządzeniu albo wartości wpisane przez twórcę.
   const savedUrl = localStorage.getItem('downtime_supabase_url') || DEFAULT_SUPABASE_URL;
   const savedKey = localStorage.getItem('downtime_supabase_key') || DEFAULT_SUPABASE_KEY;
-  if (savedUrl && savedKey) {
-    $('supabaseUrl').value = savedUrl;
-    $('supabaseKey').value = savedKey;
+  
+if (savedUrl && savedKey) {
+    $('Url').value = savedUrl;
+    $('Key').value = savedKey;
     connect(savedUrl, savedKey).catch(handleError);
-  }
+}
+
 })();
 </script>
 </body>
