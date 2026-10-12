@@ -416,22 +416,29 @@
     console.error(error);
     showStatus(error?.message || 'Wystąpił nieoczekiwany błąd.', 'error');
   }
-
-  ```js
+  
 $('connectBtn').addEventListener('click', async () => {
     const btn = $('connectBtn');
+    clearStatus();
     setBusy(btn, true, 'Łączenie…');
 
     try {
-      await connect($('Url').value.trim(), $('Key').value.trim());
-      showStatus('Połączono z Supabase.', 'ok');
+      const url = $('Url');
+      const key = $('Key');
+
+      if (!url || !key) {
+        throw new Error('Nie znaleziono pól URL lub klucza w formularzu.');
+      }
+
+      await connect(url.value.trim(), key.value.trim());
+      showStatus('Połączono z Supabase. Teraz zaloguj się.', 'ok');
+
     } catch (e) {
       handleError(e);
     } finally {
       setBusy(btn, false);
     }
 });
-```
 
   $('loginForm').addEventListener('submit', async (event) => {
     event.preventDefault(); clearStatus();
