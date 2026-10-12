@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123047">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Raportowanie przestojów</title>
+  <!-- Wstaw manifest.json i service worker w kolejnym etapie, jeśli chcesz instalować PWA. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <style>
+    :root { color-scheme: light; --navy:#123047; --blue:#176b87; --bg:#f3f6f8; --ink:#192b36; --muted:#647782; --line:#dce5e9; --red:#bd3434; --green:#16805d; --white:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+    button,input,select,textarea { font:inherit; }
+    button { cursor:pointer; }
+    .topbar { background:var(--navy); color:white; padding:calc(16px + env(safe-area-inset-top)) 18px 16px; }
+    .top-inner { max-width:1050px; margin:auto; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .brand { font-size:18px; font-weight:700; letter-spacing:-.3px; }
+    .subbrand { font-size:12px; opacity:.75; margin-top:4px; }
+    .userbox { text-align:right; font-size:12px; }
+    .userbox button { margin-top:6px; color:white; background:transparent; border:1px solid #78909e; border-radius:8px; padding:6px 10px; }
+    main { max-width:1050px; margin:0 auto; padding:20px 14px calc(28px + env(safe-area-inset-bottom)); }
+    .panel { background:var(--white); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 3px 12px #12304708; margin-bottom:16px; }
+    h1 { font-size:22px; margin:0 0 6px; letter-spacing:-.5px; }
+    h2 { font-size:16px; margin:0 0 14px; }
+    .muted { color:var(--muted); font-size:13px; line-height:1.5; }
+    .hidden { display:none !important; }
+    .field { display:flex; flex-direction:column; gap:7px; margin-bottom:13px; }
+    label { font-size:13px; font-weight:600; }
+    input,select,textarea { width:100%; border:1px solid #cbd8de; background:#fff; border-radius:10px; padding:12px; min-height:46px; color:var(--ink); }
+    textarea { min-height:80px; resize:vertical; }
+    .btn { border:0; border-radius:10px; min-height:44px; padding:11px 15px; font-weight:700; }
+    .btn-primary { background:var(--blue); color:white; }
+    .btn-danger { background:var(--red); color:white; }
+    .btn-success { background:var(--green); color:white; }
+    .btn-light { background:#eaf1f4; color:var(--navy); }
+    .btn:disabled { opacity:.55; cursor:not-allowed; }
+    .full { width:100%; }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .toolbar input,.toolbar select { flex:1; min-width:130px; }
+    .status { border-radius:9px; padding:10px 12px; font-size:13px; margin-bottom:14px; display:none; white-space:pre-wrap; }
+    .status.show { display:block; }
+    .status.error { background:#fff0f0; color:#8e2525; border:1px solid #f0caca; }
+    .status.ok { background:#eaf8f1; color:#126044; border:1px solid #c4ead7; }
+    .status.info { background:#edf5fa; color:#174b66; border:1px solid #c9e0ed; }
+    .machine-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .machine-card { border:1px solid var(--line); border-radius:13px; padding:13px; background:white; min-width:0; }
+    .machine-card.active { border-color:#e9b8b8; background:#fffafa; }
+    .machine-name { font-weight:700; font-size:14px; overflow-wrap:anywhere; }
+    .machine-line { color:var(--muted); font-size:12px; margin-top:4px; }
+    .pill { display:inline-flex; border-radius:99px; padding:5px 8px; font-size:11px; font-weight:700; margin:10px 0; }
+    .pill-running { background:#e5f6ee; color:#126044; }
+    .pill-stopped { background:#fde8e8; color:#9d2929; }
+    .card-action { width:100%; margin-top:3px; }
+    .report-list { display:flex; flex-direction:column; gap:9px; }
+    .report { border:1px solid var(--line); border-radius:12px; padding:12px; }
+    .report-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+    .report-title { font-size:13px; font-weight:700; }
+    .report-meta { color:var(--muted); font-size:12px; margin-top:5px; line-height:1.5; }
+    .duration { font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:13px; }
+    .report .btn { margin-top:10px; min-height:38px; padding:8px 11px; }
+    .section-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
+    .section-head h2 { margin:0; }
+    .empty { text-align:center; padding:22px 10px; color:var(--muted); font-size:13px; }
+    .footer-note { color:var(--muted); text-align:center; font-size:11px; padding:8px; }
+    @media(min-width:720px) { main { padding:28px 22px; } .work-grid { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; align-items:start; } .machine-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .panel { padding:20px; } }
+    @media(max-width:420px) { .machine-grid { grid-template-columns:1fr; } .panel { padding:14px; } .brand { font-size:16px; } }
+  </style>
+</head>
+<body>
+<header class="topbar">
+  <div class="top-inner">
+    <div><div class="brand">Raportowanie przestojów</div><div class="subbrand">Rejestr zdarzeń produkcyjnych</div></div>
+    <div class="userbox"><div id="userLabel">Niezalogowano</div><button id="logoutBtn" class="hidden" type="button">Wyloguj</button></div>
+  </div>
+</header>
+<main>
+  <div id="statusBox" class="status" role="status" aria-live="polite"></div>
+
+  <section id="configPanel" class="panel">
+    <h1>Konfiguracja połączenia</h1>
+    <p class="muted">Wpisz adres projektu Supabase i klucz anon/publishable. Te wartości są przeznaczone do użycia w przeglądarce; bezpieczeństwo zapewniają RLS i funkcje SQL. Nigdy nie wklejaj tutaj klucza service_role.</p>
+    <div class="field"><label for="supabaseUrl">Project URL</label><input id="supabaseUrl" type="url" placeholder="https://xxxxxxxx.supabase.co" autocomplete="url"></div>
+    <div class="field"><label for="supabaseKey">Publishable key / anon key</label><input id="supabaseKey" type="password" placeholder="sb_publishable_… lub starszy anon key" autocomplete="off"></div>
+    <button id="connectBtn" class="btn btn-primary full" type="button">Połącz z Supabase</button>
+    <p class="muted" style="margin-bottom:0">Na etapie testowym konfiguracja jest zapamiętywana tylko w tej przeglądarce. Przed wdrożeniem firmowym można wpisać wartości na stałe w pliku, jeśli repozytorium jest świadomie publiczne i używa wyłącznie klucza publicznego.</p>
+  </section>
+
+  <section id="loginPanel" class="panel hidden">
+    <h1>Logowanie</h1><p class="muted">Zaloguj się kontem utworzonym przez administratora w Supabase.</p>
+    <form id="loginForm">
+      <div class="field"><label for="email">E-mail</label><input id="email" type="email" required autocomplete="username" placeholder="operator@firma.pl"></div>
+      <div class="field"><label for="password">Hasło</label><input id="password" type="password" required autocomplete="current-password" placeholder="Hasło"></div>
+      <button id="loginBtn" class="btn btn-primary full" type="submit">Zaloguj</button>
+    </form>
+  </section>
+
+  <div id="appPanel" class="hidden">
+    <section class="panel">
+      <div class="section-head"><div><h1>Maszyny</h1><div class="muted">Wybierz maszynę, aby rozpocząć przestój.</div></div><button id="refreshBtn" class="btn btn-light" type="button">Odśwież</button></div>
+      <div class="toolbar" style="margin-bottom:14px">
+        <input id="machineSearch" type="search" placeholder="Szukaj maszyny lub linii…" aria-label="Szukaj maszyny">
+        <select id="machineFilter" aria-label="Filtr stanu"><option value="all">Wszystkie stany</option><option value="running">Bez aktywnego przestoju</option><option value="stopped">Aktywny przestój</option></select>
+      </div>
+      <div id="machineGrid" class="machine-grid"><div class="empty">Ładowanie maszyn…</div></div>
+    </section>
+
+    <div class="work-grid">
+      <section id="startPanel" class="panel hidden">
+        <h2 id="startTitle">Rozpocznij przestój</h2>
+        <form id="startForm">
+          <input type="hidden" id="selectedMachineId">
+          <div class="field"><label for="reason">Przyczyna</label>
+            <select id="reason" required>
+              <option value="">Wybierz przyczynę…</option>
+              <option>Awaria mechaniczna</option><option>Awaria elektryczna</option><option>Awaria automatyki / czujnika</option>
+              <option>Zacięcie materiału</option><option>Brak materiału</option><option>Przezbrojenie</option>
+              <option>Oczekiwanie na operatora</option><option>Oczekiwanie na utrzymanie ruchu</option>
+              <option>Jakość / kontrola</option><option>Inne</option>
+            </select>
+          </div>
+          <div class="field"><label for="comment">Komentarz (opcjonalnie)</label><textarea id="comment" maxlength="1000" placeholder="Krótki opis problemu…"></textarea></div>
+          <button id="startBtn" class="btn btn-danger full" type="submit">ZGŁOŚ PRZESTÓJ</button>
+          <button id="cancelStartBtn" class="btn btn-light full" style="margin-top:8px" type="button">Anuluj</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><h2>Historia przestojów</h2><button id="exportBtn" class="btn btn-light" type="button">Eksport Excel</button></div>
+        <div class="toolbar" style="margin-bottom:12px">
+          <input id="dateFrom" type="date" aria-label="Data od">
+          <input id="dateTo" type="date" aria-label="Data do">
+        </div>
+        <div id="reportList" class="report-list"><div class="empty">Ładowanie historii…</div></div>
+      </section>
+    </div>
+  </div>
+  <div class="footer-note">Wersja prototypowa • Wymaga połączenia z internetem podczas zapisu.</div>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  // Możesz wpisać URL i klucz publiczny na stałe, albo skonfigurować je w ekranie powyżej.
+  // Nie umieszczaj w kodzie klucza service_role ani haseł użytkowników.
+  const DEFAULT_SUPABASE_URL = '';
+  const DEFAULT_SUPABASE_KEY = '';
+
+  const $ = (id) => document.getElementById(id);
+  let supabaseClient = null;
+  let currentUser = null;
+  let currentProfile = null;
+  let machines = [];
+  let reports = [];
+  let profileNames = {};
+  let refreshTimer = null;
+
+  const REASONS = [
+    'Awaria mechaniczna','Awaria elektryczna','Awaria automatyki / czujnika',
+    'Zacięcie materiału','Brak materiału','Przezbrojenie',
+    'Oczekiwanie na operatora','Oczekiwanie na utrzymanie ruchu','Jakość / kontrola','Inne'
+  ];
+
+  function showStatus(message, type = 'info') {
+    const box = $('statusBox');
+    box.textContent = message;
+    box.className = `status show ${type}`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function clearStatus() { $('statusBox').className = 'status'; $('statusBox').textContent = ''; }
+  function setBusy(button, busy, label) {
+    button.disabled = busy;
+    if (busy) { button.dataset.oldLabel = button.textContent; button.textContent = label || 'Proszę czekać…'; }
+    else if (button.dataset.oldLabel) { button.textContent = button.dataset.oldLabel; delete button.dataset.oldLabel; }
+  }
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function formatDate(value) {
+    if (!value) return '—';
+    return new Intl.DateTimeFormat('pl-PL', { dateStyle:'short', timeStyle:'medium' }).format(new Date(value));
+  }
+  function elapsedMs(start, end) { return Math.max(0, new Date(end || Date.now()) - new Date(start)); }
+  function formatDuration(ms) {
+    const minutes = Math.floor(ms / 60000);
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor((minutes % 1440) / 60);
+    const mins = minutes % 60;
+    return days ? `${days} d ${hours} h ${mins} min` : hours ? `${hours} h ${mins} min` : `${mins} min`;
+  }
+  function machineById(id) { return machines.find(m => m.id === id); }
+  function activeReportFor(machineId) { return reports.find(r => r.machine_id === machineId && !r.ended_at); }
+
+  async function connect(url, key) {
+    if (!url || !key) throw new Error('Podaj Project URL i klucz publiczny Supabase.');
+    if (!/^https:\/\/[a-zA-Z0-9.-]+$/.test(url.replace(/\/$/, ''))) throw new Error('Project URL musi być adresem HTTPS projektu Supabase.');
+    localStorage.setItem('downtime_supabase_url', url.replace(/\/$/, ''));
+    localStorage.setItem('downtime_supabase_key', key);
+    supabaseClient = window.supabase.createClient(url.replace(/\/$/, ''), key, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) throw error;
+    $('configPanel').classList.add('hidden');
+    if (data.session) {
+      currentUser = data.session.user;
+      await afterLogin();
+    } else {
+      $('loginPanel').classList.remove('hidden');
+      $('appPanel').classList.add('hidden');
+      $('logoutBtn').classList.add('hidden');
+      $('userLabel').textContent = 'Niezalogowano';
+    }
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      // Odkładamy zapytania poza callback auth, aby uniknąć blokowania wewnętrznego klienta.
+      if (event === 'SIGNED_OUT') {
+        currentUser = null; currentProfile = null;
+        $('appPanel').classList.add('hidden');
+        $('loginPanel').classList.remove('hidden');
+        $('logoutBtn').classList.add('hidden');
+        $('userLabel').textContent = 'Niezalogowano';
+        if (refreshTimer) clearInterval(refreshTimer);
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        currentUser = session.user;
+        setTimeout(() => afterLogin().catch(handleError), 0);
+      }
+    });
+  }
+
+  async function afterLogin() {
+    if (!currentUser || !supabaseClient) return;
+    $('loginPanel').classList.add('hidden');
+    $('appPanel').classList.remove('hidden');
+    $('logoutBtn').classList.remove('hidden');
+    $('userLabel').textContent = currentUser.email || 'Zalogowano';
+    await loadProfile();
+    await refreshData();
+    if (refreshTimer) clearInterval(refreshTimer);
+    // Proste odświeżanie widoku wspólnego stanu. Zapis nadal jest kontrolowany przez RPC w bazie.
+    refreshTimer = setInterval(() => refreshData().catch(handleError), 20000);
+  }
+
+  async function loadProfile() {
+    const { data, error } = await supabaseClient.from('profiles')
+      .select('id, display_name, role').eq('id', currentUser.id).single();
+    if (error) throw new Error('Nie udało się odczytać profilu. Sprawdź, czy uruchomiono SQL i czy profil istnieje. ' + error.message);
+    currentProfile = data;
+    if (data.display_name) $('userLabel').textContent = `${data.display_name} (${data.role})`;
+  }
+
+  async function refreshData() {
+    if (!supabaseClient || !currentUser) return;
+    clearStatus();
+    const [machineResult, reportResult] = await Promise.all([
+      supabaseClient.from('machines').select('id,name,line_name,is_active,sort_order').eq('is_active', true).order('sort_order').order('name'),
+      supabaseClient.from('downtime_reports')
+        .select('id,machine_id,operator_id,reason,comment,started_at,ended_at,created_at')
+        .order('started_at', { ascending: false }).limit(500)
+    ]);
+    if (machineResult.error) throw machineResult.error;
+    if (reportResult.error) throw reportResult.error;
+    machines = machineResult.data || [];
+    reports = reportResult.data || [];
+    await loadProfileNames();
+    renderMachines();
+    renderReports();
+  }
+
+  async function loadProfileNames() {
+    const ids = [...new Set(reports.map(r => r.operator_id).filter(Boolean))];
+    profileNames = {};
+    if (!ids.length) return;
+    // Operator może odczytać profile tylko własny; manager może odczytać wszystkie.
+    // Jeśli polityka nie pozwala odczytać innych nazw, użyjemy neutralnej etykiety.
+    const { data, error } = await supabaseClient.from('profiles').select('id,display_name').in('id', ids);
+    if (!error) for (const p of (data || [])) profileNames[p.id] = p.display_name || 'Operator';
+  }
+
+  function renderMachines() {
+    const term = $('machineSearch').value.trim().toLocaleLowerCase('pl-PL');
+    const filter = $('machineFilter').value;
+    const filtered = machines.filter(m => {
+      const r = activeReportFor(m.id);
+      const matchesText = `${m.name} ${m.line_name || ''}`.toLocaleLowerCase('pl-PL').includes(term);
+      const matchesState = filter === 'all' || (filter === 'stopped' ? !!r : !r);
+      return matchesText && matchesState;
+    });
+    $('machineGrid').innerHTML = filtered.length ? filtered.map(m => {
+      const r = activeReportFor(m.id);
+      const status = r
+        ? `<span class="pill pill-stopped">PRZESTÓJ • ${escapeHtml(formatDuration(elapsedMs(r.started_at)))}</span>`
+        : '<span class="pill pill-running">BEZ AKTYWNEGO PRZESTOJU</span>';
+      const action = r
+        ? `<button class="btn btn-success card-action" data-end="${escapeHtml(r.id)}" type="button">Zakończ przestój</button>`
+        : `<button class="btn btn-primary card-action" data-start="${escapeHtml(m.id)}" type="button">Zgłoś przestój</button>`;
+      return `<article class="machine-card ${r ? 'active' : ''}">
+        <div class="machine-name">${escapeHtml(m.name)}</div><div class="machine-line">${escapeHtml(m.line_name || 'Bez przypisanej linii')}</div>
+        ${status}${action}${r ? `<div class="report-meta">Przyczyna: ${escapeHtml(r.reason)}<br>Od: ${escapeHtml(formatDate(r.started_at))}</div>` : ''}
+      </article>`;
+    }).join('') : '<div class="empty">Brak maszyn spełniających filtr. Dodaj maszyny w Supabase → Table Editor → machines.</div>';
+  }
+
+  function filteredReports() {
+    const from = $('dateFrom').value;
+    const to = $('dateTo').value;
+    return reports.filter(r => {
+      const date = new Date(r.started_at);
+      if (from && date < new Date(`${from}T00:00:00`)) return false;
+      if (to && date > new Date(`${to}T23:59:59.999`)) return false;
+      return true;
+    });
+  }
+
+  function renderReports() {
+    const rows = filteredReports();
+    $('reportList').innerHTML = rows.length ? rows.map(r => {
+      const m = machineById(r.machine_id);
+      const active = !r.ended_at;
+      const duration = formatDuration(elapsedMs(r.started_at, r.ended_at));
+      const operatorName = profileNames[r.operator_id] || (r.operator_id === currentUser?.id ? (currentProfile?.display_name || currentUser.email) : 'Operator');
+      const canEnd = active && (r.operator_id === currentUser?.id || currentProfile?.role === 'manager');
+      return `<article class="report">
+        <div class="report-head"><div><div class="report-title">${escapeHtml(m?.name || 'Nieznana maszyna')} · ${escapeHtml(r.reason)}</div>
+          <div class="report-meta">${escapeHtml(m?.line_name || '')}<br>Start: ${escapeHtml(formatDate(r.started_at))}<br>
+          Koniec: ${escapeHtml(r.ended_at ? formatDate(r.ended_at) : 'W TRAKCIE')}<br>Operator: ${escapeHtml(operatorName)}
+          ${r.comment ? `<br>Opis: ${escapeHtml(r.comment)}` : ''}</div></div>
+          <div class="duration">${escapeHtml(duration)}</div></div>
+        ${canEnd ? `<button class="btn btn-success" data-end="${escapeHtml(r.id)}" type="button">Zakończ przestój</button>` : ''}
+      </article>`;
+    }).join('') : '<div class="empty">Brak zgłoszeń w wybranym zakresie.</div>';
+  }
+
+  async function startDowntime(machineId, reason, comment) {
+    const { error } = await supabaseClient.rpc('start_downtime', {
+      p_machine_id: machineId, p_reason: reason, p_comment: comment || ''
+    });
+    if (error) {
+      if (error.code === '23505' || /już aktywny przestój/i.test(error.message || '')) {
+        throw new Error('Ta maszyna ma już aktywny przestój. Lista zostanie odświeżona.');
+      }
+      throw error;
+    }
+    $('startPanel').classList.add('hidden');
+    $('startForm').reset();
+    await refreshData();
+    showStatus('Przestój został zapisany.', 'ok');
+  }
+
+  async function endDowntime(reportId) {
+    const { error } = await supabaseClient.rpc('end_downtime', { p_report_id: reportId });
+    if (error) throw error;
+    await refreshData();
+    showStatus('Przestój został zakończony.', 'ok');
+  }
+
+  async function exportExcel() {
+    if (!window.ExcelJS) throw new Error('Nie udało się załadować ExcelJS. Sprawdź połączenie z internetem.');
+    const rows = filteredReports();
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Raportowanie przestojów';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Przestoje', { views: [{ state: 'frozen', ySplit: 1 }] });
+    sheet.columns = [
+      { header:'Data rozpoczęcia', key:'started', width:22 },
+      { header:'Linia', key:'line', width:18 },
+      { header:'Maszyna', key:'machine', width:24 },
+      { header:'Operator', key:'operator', width:24 },
+      { header:'Przyczyna', key:'reason', width:30 },
+      { header:'Początek', key:'start', width:22 },
+      { header:'Koniec', key:'end', width:22 },
+      { header:'Czas trwania (min)', key:'minutes', width:20 },
+      { header:'Status', key:'status', width:16 },
+      { header:'Komentarz', key:'comment', width:45 }
+    ];
+    for (const r of rows) {
+      const m = machineById(r.machine_id);
+      const durationMin = Math.round(elapsedMs(r.started_at, r.ended_at) / 60000);
+      sheet.addRow({
+        started: new Date(r.started_at),
+        line: m?.line_name || '',
+        machine: m?.name || 'Nieznana maszyna',
+        operator: profileNames[r.operator_id] || (r.operator_id === currentUser.id ? currentProfile?.display_name || currentUser.email : 'Operator'),
+        reason: r.reason,
+        start: new Date(r.started_at),
+        end: r.ended_at ? new Date(r.ended_at) : null,
+        minutes: durationMin,
+        status: r.ended_at ? 'Zakończony' : 'W trakcie',
+        comment: r.comment || ''
+      });
+    }
+    sheet.getRow(1).font = { bold:true, color:{ argb:'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF123047' } };
+    sheet.getColumn('started').numFmt = 'yyyy-mm-dd';
+    sheet.getColumn('start').numFmt = 'yyyy-mm-dd hh:mm:ss';
+    sheet.getColumn('end').numFmt = 'yyyy-mm-dd hh:mm:ss';
+    sheet.autoFilter = { from: 'A1', to: 'J1' };
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `przestoje_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showStatus(`Wyeksportowano ${rows.length} zgłoszeń do Excela.`, 'ok');
+  }
+
+  function handleError(error) {
+    console.error(error);
+    showStatus(error?.message || 'Wystąpił nieoczekiwany błąd.', 'error');
+  }
+
+  $('connectBtn').addEventListener('click', async () => {
+    const btn = $('connectBtn'); setBusy(btn, true, 'Łączenie…');
+    try {
+      await connect($('supabaseUrl').value.trim(), $('supabaseKey').value.trim());
+      showStatus('Połączono z Supabase.', 'ok');
+    } catch (e) { handleError(e); }
+    finally { setBusy(btn, false); }
+  });
+
+  $('loginForm').addEventListener('submit', async (event) => {
+    event.preventDefault(); clearStatus();
+    const btn = $('loginBtn'); setBusy(btn, true, 'Logowanie…');
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: $('email').value.trim(), password: $('password').value
+      });
+      if (error) throw error;
+      currentUser = data.user;
+      await afterLogin();
+      showStatus('Zalogowano pomyślnie.', 'ok');
+    } catch (e) { handleError(e); }
+    finally { setBusy(btn, false); }
+  });
+
+  $('logoutBtn').addEventListener('click', async () => {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) handleError(error);
+  });
+
+  $('machineGrid').addEventListener('click', async (event) => {
+    const startButton = event.target.closest('[data-start]');
+    const endButton = event.target.closest('[data-end]');
+    if (startButton) {
+      const m = machineById(startButton.dataset.start);
+      if (!m) return;
+      $('selectedMachineId').value = m.id;
+      $('startTitle').textContent = `Przestój — ${m.name}`;
+      $('startPanel').classList.remove('hidden');
+      $('reason').focus();
+      $('startPanel').scrollIntoView({ behavior:'smooth', block:'start' });
+    } else if (endButton) {
+      if (!confirm('Zakończyć ten przestój?')) return;
+      endButton.disabled = true;
+      try { await endDowntime(endButton.dataset.end); } catch (e) { handleError(e); } finally { endButton.disabled = false; }
+    }
+  });
+
+  $('reportList').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-end]');
+    if (!button) return;
+    if (!confirm('Zakończyć ten przestój?')) return;
+    button.disabled = true;
+    try { await endDowntime(button.dataset.end); } catch (e) { handleError(e); } finally { button.disabled = false; }
+  });
+
+  $('startForm').addEventListener('submit', async (event) => {
+    event.preventDefault(); clearStatus();
+    const machineId = $('selectedMachineId').value;
+    const reason = $('reason').value;
+    const comment = $('comment').value.trim();
+    if (!machineId || !reason) { showStatus('Wybierz maszynę i przyczynę.', 'error'); return; }
+    const btn = $('startBtn'); setBusy(btn, true, 'Zapisywanie…');
+    try { await startDowntime(machineId, reason, comment); }
+    catch (e) { await refreshData().catch(() => {}); handleError(e); }
+    finally { setBusy(btn, false); }
+  });
+
+  $('cancelStartBtn').addEventListener('click', () => { $('startPanel').classList.add('hidden'); $('startForm').reset(); });
+  $('refreshBtn').addEventListener('click', () => refreshData().catch(handleError));
+  $('machineSearch').addEventListener('input', renderMachines);
+  $('machineFilter').addEventListener('change', renderMachines);
+  $('dateFrom').addEventListener('change', renderReports);
+  $('dateTo').addEventListener('change', renderReports);
+  $('exportBtn').addEventListener('click', () => exportExcel().catch(handleError));
+
+  // Wczytaj konfigurację zapisaną na tym urządzeniu albo wartości wpisane przez twórcę.
+  const savedUrl = localStorage.getItem('downtime_supabase_url') || DEFAULT_SUPABASE_URL;
+  const savedKey = localStorage.getItem('downtime_supabase_key') || DEFAULT_SUPABASE_KEY;
+  if (savedUrl && savedKey) {
+    $('supabaseUrl').value = savedUrl;
+    $('supabaseKey').value = savedKey;
+    connect(savedUrl, savedKey).catch(handleError);
+  }
+})();
+</script>
+</body>
+</html>
