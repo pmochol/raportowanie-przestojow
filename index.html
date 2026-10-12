@@ -85,15 +85,15 @@
 
   <section id="configPanel" class="panel">
     <h1>Konfiguracja połączenia</h1>
-    <p class="muted">Wpisz adres projektu Supabase i klucz anon/publishable. Te wartości są przeznaczone do użycia w przeglądarce; bezpieczeństwo zapewniają RLS i funkcje SQL. Nigdy nie wklejaj tutaj klucza service_role.</p>
-    <div class="field"><label for="supabaseUrl">Project URL</label><input id="supabaseUrl" type="url" placeholder="https://xxxxxxxx.supabase.co" autocomplete="url"></div>
-    <div class="field"><label for="supabaseKey">Publishable key / anon key</label><input id="supabaseKey" type="password" placeholder="sb_publishable_… lub starszy anon key" autocomplete="off"></div>
-    <button id="connectBtn" class="btn btn-primary full" type="button">Połącz z Supabase</button>
+    <p class="muted">Wpisz adres projektu  i klucz anon/publishable. Te wartości są przeznaczone do użycia w przeglądarce; bezpieczeństwo zapewniają RLS i funkcje SQL. Nigdy nie wklejaj tutaj klucza service_role.</p>
+    <div class="field"><label for="Url">Project URL</label><input id="Url" type="url" placeholder="https://xxxxxxxx..co" autocomplete="url"></div>
+    <div class="field"><label for="Key">Publishable key / anon key</label><input id="Key" type="password" placeholder="sb_publishable_… lub starszy anon key" autocomplete="off"></div>
+    <button id="connectBtn" class="btn btn-primary full" type="button">Połącz z </button>
     <p class="muted" style="margin-bottom:0">Na etapie testowym konfiguracja jest zapamiętywana tylko w tej przeglądarce. Przed wdrożeniem firmowym można wpisać wartości na stałe w pliku, jeśli repozytorium jest świadomie publiczne i używa wyłącznie klucza publicznego.</p>
   </section>
 
   <section id="loginPanel" class="panel hidden">
-    <h1>Logowanie</h1><p class="muted">Zaloguj się kontem utworzonym przez administratora w Supabase.</p>
+    <h1>Logowanie</h1><p class="muted">Zaloguj się kontem utworzonym przez administratora w .</p>
     <form id="loginForm">
       <div class="field"><label for="email">E-mail</label><input id="email" type="email" required autocomplete="username" placeholder="operator@firma.pl"></div>
       <div class="field"><label for="password">Hasło</label><input id="password" type="password" required autocomplete="current-password" placeholder="Hasło"></div>
@@ -151,7 +151,7 @@
   // Możesz wpisać URL i klucz publiczny na stałe, albo skonfigurować je w ekranie powyżej.
   // Nie umieszczaj w kodzie klucza service_role ani haseł użytkowników.
   
-  const DEFAULT_SUPABASE_URL = 'https://visozxaoxyhpmobxdtoj.supabase.co/rest/v1/';
+  const DEFAULT_SUPABASE_URL = 'https://visozxaoxyhpmobxdtoj.supabase.co';
   const DEFAULT_SUPABASE_KEY = 'sb_publishable_OtPCBdY4T0bEVU2q66zMAQ_5JF_cBmP';
 
   const $ = (id) => document.getElementById(id);
