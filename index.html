@@ -256,23 +256,50 @@
     if (data.display_name) $('userLabel').textContent = `${data.display_name} (${data.role})`;
   }
 
-  async function refreshData() {
-    if (!supabaseClient || !currentUser) return;
-    clearStatus();
-    const [machineResult, reportResult] = await Promise.all([
-      supabaseClient.from('machines').select('id,name,line_name,is_active,sort_order').eq('is_active', true).order('sort_order').order('name'),
-      supabaseClient.from('downtime_reports')
-        .select('id,machine_id,operator_id,reason,comment,started_at,ended_at,created_at')
-        .order('started_at', { ascending: false }).limit(500)
-    ]);
-    if (machineResult.error) throw machineResult.error;
-    if (reportResult.error) throw reportResult.error;
-    machines = machineResult.data || [];
-    reports = reportResult.data || [];
-    await loadProfileNames();
+  
+async function refreshData() {
+  if (!supabaseClient || !currentUser) return;
+
+  clearStatus();
+
+  // Maszyny pobieramy i wyświetlamy niezależnie od historii.
+  const machinesPromise = (async () => {
+    const { data, error } = await supabaseClient
+      .from('machines')
+      .select('id,name,line_name,is_active,sort_order')
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name');
+
+    if (error) throw error;
+
+    machines = data || [];
+    renderMachines();
+  })();
+
+  // Historia nie blokuje wyświetlenia listy maszyn.
+  const reportsPromise = (async () => {
+    const { data, error } = await supabaseClient
+      .from('downtime_reports')
+      .select('id,machine_id,operator_id,reason,comment,started_at,ended_at,created_at')
+      .order('started_at', { ascending: false })
+      .limit(500);
+
+    if (error) throw error;
+
+    reports = data || [];
     renderMachines();
     renderReports();
-  }
+
+    // Nazwy operatorów uzupełniamy w tle.
+    loadProfileNames()
+      .then(() => renderReports())
+      .catch(error => console.warn('Nie udało się pobrać nazw operatorów:', error));
+  })();
+
+  await Promise.all([machinesPromise, reportsPromise]);
+}
+
 
   async function loadProfileNames() {
     const ids = [...new Set(reports.map(r => r.operator_id).filter(Boolean))];
