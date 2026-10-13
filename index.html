@@ -65,6 +65,13 @@
     .report-meta { color:var(--muted); font-size:12px; margin-top:5px; line-height:1.5; }
     .duration { font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:13px; }
     .report .btn { margin-top:10px; min-height:38px; padding:8px 11px; }
+    .report-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .report-actions .btn { flex:1; }
+    .modal-backdrop { position:fixed; inset:0; z-index:1000; background:#10233099; display:flex; align-items:center; justify-content:center; padding:14px; overflow:auto; }
+    .modal { width:min(100%,560px); max-height:calc(100dvh - 28px); overflow:auto; background:white; border-radius:16px; padding:20px; box-shadow:0 16px 50px #0003; }
+    .modal h2 { margin-bottom:16px; }
+    .modal-actions { display:flex; gap:8px; margin-top:16px; }
+    .modal-actions .btn { flex:1; }
     .section-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
     .section-head h2 { margin:0; }
     .empty { text-align:center; padding:22px 10px; color:var(--muted); font-size:13px; }
@@ -141,6 +148,23 @@
       </section>
     </div>
   </div>
+  <section id="editModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="modal">
+      <h2 id="editTitle">Edytuj wpis przestoju</h2>
+      <form id="editForm">
+        <input type="hidden" id="editReportId">
+        <div class="field"><label for="editMachine">Maszyna</label><select id="editMachine" required></select></div>
+        <div class="field"><label for="editReason">Przyczyna</label><select id="editReason" required></select></div>
+        <div class="field"><label for="editComment">Komentarz</label><textarea id="editComment" maxlength="1000" placeholder="Opis problemu…"></textarea></div>
+        <div class="field"><label for="editStartedAt">Data i godzina rozpoczęcia</label><input id="editStartedAt" type="datetime-local" required></div>
+        <div class="field"><label for="editEndedAt">Data i godzina zakończenia</label><input id="editEndedAt" type="datetime-local"><div class="muted">Pozostaw puste, jeśli przestój nadal trwa.</div></div>
+        <div class="modal-actions">
+          <button id="cancelEditBtn" class="btn btn-light" type="button">Anuluj</button>
+          <button id="saveEditBtn" class="btn btn-primary" type="submit">Zapisz zmiany</button>
+        </div>
+      </form>
+    </div>
+  </section>
   <div class="footer-note">Wersja prototypowa • Wymaga połączenia z internetem podczas zapisu.</div>
 </main>
 
@@ -353,14 +377,20 @@ async function refreshData() {
       const active = !r.ended_at;
       const duration = formatDuration(elapsedMs(r.started_at, r.ended_at));
       const operatorName = profileNames[r.operator_id] || (r.operator_id === currentUser?.id ? (currentProfile?.display_name || currentUser.email) : 'Operator');
-      const canEnd = active && (r.operator_id === currentUser?.id || currentProfile?.role === 'manager');
+      const canModify = r.operator_id === currentUser?.id || currentProfile?.role === 'manager';
+      const canEnd = active && canModify;
+      const canDelete = !active && canModify;
       return `<article class="report">
         <div class="report-head"><div><div class="report-title">${escapeHtml(m?.name || 'Nieznana maszyna')} · ${escapeHtml(r.reason)}</div>
           <div class="report-meta">${escapeHtml(m?.line_name || '')}<br>Start: ${escapeHtml(formatDate(r.started_at))}<br>
           Koniec: ${escapeHtml(r.ended_at ? formatDate(r.ended_at) : 'W TRAKCIE')}<br>Operator: ${escapeHtml(operatorName)}
           ${r.comment ? `<br>Opis: ${escapeHtml(r.comment)}` : ''}</div></div>
           <div class="duration">${escapeHtml(duration)}</div></div>
-        ${canEnd ? `<button class="btn btn-success" data-end="${escapeHtml(r.id)}" type="button">Zakończ przestój</button>` : ''}
+        <div class="report-actions">
+          ${canEnd ? `<button class="btn btn-success" data-end="${escapeHtml(r.id)}" type="button">Zakończ przestój</button>` : ''}
+          ${canModify ? `<button class="btn btn-light" data-edit="${escapeHtml(r.id)}" type="button">Edytuj</button>` : ''}
+          ${canDelete ? `<button class="btn btn-danger" data-delete="${escapeHtml(r.id)}" type="button">Usuń</button>` : ''}
+        </div>
       </article>`;
     }).join('') : '<div class="empty">Brak zgłoszeń w wybranym zakresie.</div>';
   }
@@ -386,6 +416,92 @@ async function refreshData() {
     if (error) throw error;
     await refreshData();
     showStatus('Przestój został zakończony.', 'ok');
+  }
+
+  function toDateTimeLocal(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function openEditModal(reportId) {
+    const r = reports.find(item => String(item.id) === String(reportId));
+    if (!r) throw new Error('Nie znaleziono wpisu w historii. Odśwież dane i spróbuj ponownie.');
+    const canModify = r.operator_id === currentUser?.id || currentProfile?.role === 'manager';
+    if (!canModify) throw new Error('Nie masz uprawnień do edycji tego wpisu.');
+
+    $('editReportId').value = r.id;
+    $('editMachine').innerHTML = machines.map(m =>
+      `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}${m.line_name ? ' — ' + escapeHtml(m.line_name) : ''}</option>`
+    ).join('');
+    $('editReason').innerHTML = REASONS.map(reason =>
+      `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`
+    ).join('');
+    $('editMachine').value = r.machine_id;
+    $('editReason').value = r.reason;
+    $('editComment').value = r.comment || '';
+    $('editStartedAt').value = toDateTimeLocal(r.started_at);
+    $('editEndedAt').value = toDateTimeLocal(r.ended_at);
+    $('editModal').classList.remove('hidden');
+  }
+
+  function closeEditModal() {
+    $('editModal').classList.add('hidden');
+    $('editForm').reset();
+  }
+
+  async function saveReportEdit() {
+    const id = $('editReportId').value;
+    const r = reports.find(item => String(item.id) === String(id));
+    if (!r) throw new Error('Nie znaleziono edytowanego wpisu.');
+    if (!(r.operator_id === currentUser?.id || currentProfile?.role === 'manager')) {
+      throw new Error('Nie masz uprawnień do edycji tego wpisu.');
+    }
+
+    const startedValue = $('editStartedAt').value;
+    const endedValue = $('editEndedAt').value;
+    if (!startedValue) throw new Error('Podaj datę i godzinę rozpoczęcia.');
+    const started = new Date(startedValue);
+    const ended = endedValue ? new Date(endedValue) : null;
+    if (Number.isNaN(started.getTime()) || (ended && Number.isNaN(ended.getTime()))) {
+      throw new Error('Podana data lub godzina jest nieprawidłowa.');
+    }
+    if (ended && ended <= started) throw new Error('Koniec przestoju musi być późniejszy niż jego początek.');
+    if (!ended && started > new Date()) throw new Error('Początek aktywnego przestoju nie może być w przyszłości.');
+
+    const btn = $('saveEditBtn');
+    setBusy(btn, true, 'Zapisywanie…');
+    try {
+      const { error } = await supabaseClient.from('downtime_reports').update({
+        machine_id: $('editMachine').value,
+        reason: $('editReason').value,
+        comment: $('editComment').value.trim(),
+        started_at: started.toISOString(),
+        ended_at: ended ? ended.toISOString() : null
+      }).eq('id', id);
+      if (error) throw error;
+      closeEditModal();
+      await refreshData();
+      showStatus('Wpis historii został zaktualizowany.', 'ok');
+    } finally {
+      setBusy(btn, false);
+    }
+  }
+
+  async function deleteReport(reportId) {
+    const r = reports.find(item => String(item.id) === String(reportId));
+    if (!r) throw new Error('Nie znaleziono wpisu do usunięcia.');
+    if (!r.ended_at) throw new Error('Nie można usunąć aktywnego przestoju. Najpierw go zakończ.');
+    if (!(r.operator_id === currentUser?.id || currentProfile?.role === 'manager')) {
+      throw new Error('Nie masz uprawnień do usunięcia tego wpisu.');
+    }
+    if (!confirm('Czy na pewno usunąć ten zakończony wpis z historii? Tej operacji nie można cofnąć.')) return;
+    const { error } = await supabaseClient.from('downtime_reports').delete().eq('id', reportId);
+    if (error) throw error;
+    await refreshData();
+    showStatus('Wpis został usunięty z historii.', 'ok');
   }
 
   async function exportExcel() {
@@ -507,11 +623,40 @@ $('connectBtn').addEventListener('click', async () => {
   });
 
   $('reportList').addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-end]');
-    if (!button) return;
-    if (!confirm('Zakończyć ten przestój?')) return;
-    button.disabled = true;
-    try { await endDowntime(button.dataset.end); } catch (e) { handleError(e); } finally { button.disabled = false; }
+    const editButton = event.target.closest('[data-edit]');
+    const deleteButton = event.target.closest('[data-delete]');
+    const endButton = event.target.closest('[data-end]');
+    try {
+      if (editButton) {
+        openEditModal(editButton.dataset.edit);
+      } else if (deleteButton) {
+        deleteButton.disabled = true;
+        await deleteReport(deleteButton.dataset.delete);
+      } else if (endButton) {
+        if (!confirm('Zakończyć ten przestój?')) return;
+        endButton.disabled = true;
+        await endDowntime(endButton.dataset.end);
+      }
+    } catch (e) {
+      handleError(e);
+    } finally {
+      if (editButton) editButton.disabled = false;
+      if (deleteButton) deleteButton.disabled = false;
+      if (endButton) endButton.disabled = false;
+    }
+  });
+
+  $('editForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    clearStatus();
+    try { await saveReportEdit(); } catch (e) { handleError(e); }
+  });
+  $('cancelEditBtn').addEventListener('click', closeEditModal);
+  $('editModal').addEventListener('click', (event) => {
+    if (event.target === $('editModal')) closeEditModal();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('editModal').classList.contains('hidden')) closeEditModal();
   });
 
   $('startForm').addEventListener('submit', async (event) => {
